@@ -49,6 +49,8 @@ require_once($CFG->libdir.'/ldaplib.php');
  */
 class auth_plugin_ldap extends auth_plugin_base {
 
+    private $userinfo_cache = array();
+
     /**
      * Init plugin config from database settings depending on the plugin auth type.
      */
@@ -199,6 +201,11 @@ class auth_plugin_ldap extends auth_plugin_base {
      * @return mixed array with no magic quotes or false on error
      */
     function get_userinfo($username) {
+        # use cache to speed things up
+        if (isset($this->userinfo_cache[$username])) {
+            return $this->userinfo_cache[$username];
+        }
+
         $textlib = textlib_get_instance();
         $extusername = $textlib->convert($username, 'utf-8', $this->config->ldapencoding);
 
@@ -260,6 +267,52 @@ class auth_plugin_ldap extends auth_plugin_base {
 
         $this->ldap_close();
         return $result;
+    }
+
+    function cache_userinfo ($conn, $entry) {
+        $attrmap = $this->ldap_attributes();
+        $attributes = array_change_key_case(@ldap_get_attributes($conn, $entry), CASE_LOWER);
+        $textlib = textlib_get_instance();
+        $user_entry = array();
+        for ($j=0; $j<$attributes['count']; $j++) {
+            $values = ldap_get_values_len($conn, $entry,$attributes[$j]);
+            if (is_array($values)) {
+                $user_entry[$attributes[$j]] = $values;
+            }
+            else {
+                $user_entry[$attributes[$j]] = array($values);
+            }
+        }
+
+        $result = array();
+        foreach ($attrmap as $key => $values) {
+            if (!is_array($values)) {
+                $values = array($values);
+            }
+            $ldapval = NULL;
+            foreach ($values as $value) {
+                $entry = array_change_key_case($user_entry, CASE_LOWER);
+                if (($value == 'dn') || ($value == 'distinguishedname')) {
+                    $result[$key] = $user_dn;
+                    continue;
+                }
+                if (!array_key_exists($value, $entry)) {
+                    continue; // wrong data mapping!
+                }
+                if (is_array($entry[$value])) {
+                    $newval = $textlib->convert($entry[$value][0], $this->config->ldapencoding, 'utf-8');
+                } else {
+                    $newval = $textlib->convert($entry[$value], $this->config->ldapencoding, 'utf-8');
+                }
+                if (!empty($newval)) { // favour ldap entries that are set
+                    $ldapval = $newval;
+                }
+            }
+            if (!is_null($ldapval)) {
+                $result[$key] = $ldapval;
+            }
+        }
+        $this->userinfo_cache[$result['username']] = $result;
     }
 
     /**
@@ -612,6 +665,23 @@ class auth_plugin_ldap extends auth_plugin_base {
     function sync_users($do_updates=true) {
         global $CFG, $DB;
 
+        # build array of search attributes
+        $attrmap = $this->ldap_attributes();
+
+        $result = array();
+        $search_attribs = array();
+
+        foreach ($attrmap as $key=>$values) {
+            if (!is_array($values)) {
+                $values = array($values);
+            }
+            foreach ($values as $value) {
+                if (!in_array($value, $search_attribs)) {
+                    array_push($search_attribs, $value);
+                }
+            }
+        }
+
         print_string('connectingldap', 'auth_ldap');
         $ldapconnection = $this->ldap_connect();
 
@@ -651,12 +721,12 @@ class auth_plugin_ldap extends auth_plugin_base {
                 //use ldap_search to find first user from subtree
                 $ldap_result = ldap_search($ldapconnection, $context,
                                            $filter,
-                                           array($this->config->user_attribute));
+                                           $search_attribs);
             } else {
                 //search only in this context
                 $ldap_result = ldap_list($ldapconnection, $context,
                                          $filter,
-                                         array($this->config->user_attribute));
+                                         $search_attribs);
             }
 
             if(!$ldap_result) {
@@ -665,6 +735,7 @@ class auth_plugin_ldap extends auth_plugin_base {
 
             if ($entry = @ldap_first_entry($ldapconnection, $ldap_result)) {
                 do {
+                    $this->cache_userinfo($ldapconnection, $entry);
                     $value = ldap_get_values_len($ldapconnection, $entry, $this->config->user_attribute);
                     $value = $textlib->convert($value[0], $this->config->ldapencoding, 'utf-8');
                     $this->ldap_bulk_insert($value);
