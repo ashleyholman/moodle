@@ -6179,7 +6179,14 @@ class core_string_manager implements string_manager {
             // try on-disk cache then
             if ($this->usediskcache and file_exists($this->cacheroot . "/$lang/$component.php")) {
                 $this->countdiskcache++;
-                include($this->cacheroot . "/$lang/$component.php");
+                # obtain a shared lock on the cache file to ensure we are not
+                # reading a partially-written file
+                if ($fh = fopen($this->cacheroot . "/$lang/$component.php", 'r')) {
+                    flock($fh, LOCK_SH);
+                    include($this->cacheroot . "/$lang/$component.php");
+                    flock($fh, LOCK_UN);
+                    fclose($fh);
+                }
                 return $this->cache[$lang][$component];
             }
         }
@@ -6265,7 +6272,8 @@ class core_string_manager implements string_manager {
         $this->cache[$lang][$component] = $string;
         if ($this->usediskcache) {
             check_dir_exists("$this->cacheroot/$lang");
-            file_put_contents("$this->cacheroot/$lang/$component.php", "<?php \$this->cache['$lang']['$component'] = ".var_export($string, true).";");
+            # write the cache file with an exclusive lock to prevent partial reads
+            file_put_contents("$this->cacheroot/$lang/$component.php", "<?php \$this->cache['$lang']['$component'] = ".var_export($string, true).";", LOCK_EX);
         }
         return $string;
     }
