@@ -156,7 +156,8 @@ class tinymce_texteditor extends texteditor {
                     'theme_advanced_toolbar_location' => "top",
                     'theme_advanced_statusbar_location' => "bottom",
                     'spellchecker_rpc_url' => $CFG->wwwroot."/lib/editor/tinymce/tiny_mce/$this->version/plugins/spellchecker/rpc.php",
-                    'spellchecker_languages' => $spelllanguagelist
+                    'spellchecker_languages' => $spelllanguagelist,
+                    'onchange_callback' => 'sessionTimeoutEditorContentsChanged'
                   );
 
         if ($xemoticon) {

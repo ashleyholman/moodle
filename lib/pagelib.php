@@ -1144,7 +1144,7 @@ class moodle_page {
      * @param array $params parameters to add to the URL
      */
     public function set_url($url, array $params = null) {
-        global $CFG;
+        global $CFG, $PAGE;
 
         if (is_string($url)) {
             if (strpos($url, 'http') === 0) {
@@ -1158,6 +1158,14 @@ class moodle_page {
         }
 
         $this->_url = new moodle_url($url, $params);
+
+        $modurl = new moodle_url('/mod/');
+        $modediturl = new moodle_url('/course/modedit.php');
+        if (strpos($this->_url->out(), $modurl->out()) === 0 ||
+            strpos($this->_url->out(),$modediturl->out()) === 0) {
+            $PAGE->requires->js('/lib/session-timeout.js');
+            $PAGE->requires->js_init_call('watchTimeout', array($CFG->sessiontimeout));
+        }
 
         $fullurl = $this->_url->out_omit_querystring();
         if (strpos($fullurl, "$CFG->httpswwwroot/") !== 0) {
