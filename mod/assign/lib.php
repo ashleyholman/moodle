@@ -324,6 +324,7 @@ function assign_print_overview($courses, &$htmlarray) {
     $strsubmitted = get_string('submitted', 'assign');
     $strassignment = get_string('modulename', 'assign');
     $strreviewed = get_string('reviewed','assign');
+    $strextensionduedate = get_string('extensionduedate', 'assign');
 
 
     // NOTE: we do all possible database work here *outside* of the loop to ensure this scales
@@ -347,6 +348,10 @@ function assign_print_overview($courses, &$htmlarray) {
         } else {
             $str .= '<div class="info">'.$strduedateno.'</div>';
         }
+        $grade = $DB->get_record('assign_grades', array('assignment'=>$assignment->id, 'userid'=>$USER->id));
+        if (!empty($grade) && $grade->extensionduedate) {
+            $str .= '<div class="info">'.$strextensionduedate.': ' . userdate($grade->extensionduedate).'</div>';
+        }
         if ($assignment->cutoffdate) {
             if ($assignment->cutoffdate == $assignment->duedate) {
                 $str .= '<div class="info">'.$strnolatesubmissions.'</div>';
@@ -365,7 +370,8 @@ function assign_print_overview($courses, &$htmlarray) {
                                                   s.userid as userid,
                                                   s.id as id,
                                                   s.status as status,
-                                                  g.timemodified as timegraded
+                                                  g.timemodified as timegraded,
+                                                  g.extensionduedate as extensionduedate
                                               FROM {assign_submission} s
                                               LEFT JOIN {assign_grades} g ON
                                                   s.userid = g.userid AND
