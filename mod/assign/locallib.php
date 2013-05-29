@@ -3301,7 +3301,7 @@ class assign {
             }
         }
 
-        if ($this->grading_disabled($userid)) {
+        if ($this->grading_disabled($userid, true)) {
             return false;
         }
 
@@ -4072,9 +4072,10 @@ class assign {
      * Determine if this users grade is locked or overridden
      *
      * @param int $userid - The student userid
+     * @param bool $permitoverride - If true, grade overrides will not be considered to disable a grade.
      * @return bool $gradingdisabled
      */
-    public function grading_disabled($userid) {
+    public function grading_disabled($userid, $permitoverride = false) {
         global $CFG;
 
         $gradinginfo = grade_get_grades($this->get_course()->id, 'mod', 'assign', $this->get_instance()->id, array($userid));
@@ -4085,7 +4086,8 @@ class assign {
         if (!isset($gradinginfo->items[0]->grades[$userid])) {
             return false;
         }
-        $gradingdisabled = $gradinginfo->items[0]->grades[$userid]->locked || $gradinginfo->items[0]->grades[$userid]->overridden;
+        $gradingdisabled = $gradinginfo->items[0]->grades[$userid]->locked ||
+                           (!$permitoverride && $gradinginfo->items[0]->grades[$userid]->overridden);
         return $gradingdisabled;
     }
 
@@ -4162,11 +4164,16 @@ class assign {
         } else {
             // use simple direct grading
             if ($this->get_instance()->grade > 0) {
-                $gradingelement = $mform->addElement('text', 'grade', get_string('gradeoutof', 'assign',$this->get_instance()->grade));
-                $mform->addHelpButton('grade', 'gradeoutofhelp', 'assign');
-                $mform->setType('grade', PARAM_TEXT);
-                if ($gradingdisabled) {
-                    $gradingelement->freeze();
+                if (!$gradingdisabled) {
+                    $gradingelement = $mform->addElement('text', 'grade', get_string('gradeoutof', 'assign',$this->get_instance()->grade));
+                    $mform->addHelpButton('grade', 'gradeoutofhelp', 'assign');
+                    $mform->setType('grade', PARAM_TEXT);
+                } else {
+                    $mform->addElement('hidden', 'grade', get_string('gradeoutof', 'assign',$this->get_instance()->grade));
+                    $mform->hardFreeze('grade');
+                    $strgradelocked = get_string('gradelocked', 'assign');
+                    $mform->addElement('static', 'gradedisabled', get_string('gradeoutof', 'assign', $this->get_instance()->grade), $strgradelocked);
+                    $mform->addHelpButton('gradedisabled', 'gradeoutofhelp', 'assign');
                 }
             } else {
                 $grademenu = make_grades_menu($this->get_instance()->grade);
